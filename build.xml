@@ -1,0 +1,194 @@
+<?xml version="1.0" ?>
+
+<!--
+   Ant buildfile for the cewolf tag library
+  -->
+
+<project name="cewolf" default="jar" basedir=".">
+
+  <!-- =================================================================== -->
+  <!-- properties                   -->
+  <!-- =================================================================== -->
+
+	<property file="build.properties" />
+
+	<property name="name"			value="cewolf" />
+	<property name="cewolfJar"		value="${name}-${cewolfVersion}.jar" />
+	<property name="srcDir"			value="src" />
+	<property name="srcDirMain"		value="${srcDir}/main" />
+	<property name="srcDirTest"		value="${srcDir}/test" />
+	<property name="classDir"		value="${srcDir}/classes" />
+	<property name="libDir"			value="lib" />
+	<property name="apiDir"			value="javadoc" />
+	<property name="tagApiDir"		value="tagdoc" />
+	<property name="distDir" 		value="${name}-${cewolfVersion}" />
+	<property name="distZip" 		value="${name}-${cewolfVersion}.zip" />
+	<property name="qaDir"			value="qa" />
+
+	<property name="tldDocLib"		value="tlddoc.jar" />
+
+  <!-- =================================================================== -->
+  <!-- Define the basic classpath                                          -->
+  <!-- =================================================================== -->
+	<path id="basic.class.path">
+		<fileset dir="${libDir}">
+			<include name="**/*.jar"/>
+		</fileset>
+	</path>
+
+	<path id="test.class.path">
+		<pathelement path="${classDir}" />
+		<fileset dir="${libDir}">
+			<include name="*.jar"/>
+		</fileset>
+	</path>
+
+
+  <!-- =================================================================== -->
+  <!-- Undo the actions of compile, dist, and run targets                  -->
+  <!-- =================================================================== -->
+  <target name="clean" description="remove class files, backups, and distribution zip">
+    <delete dir="${classDir}" />
+    <delete dir="${tagApiDir}" />
+    <delete dir="${apiDir}" />
+    <delete file="${distZip}" />
+    <delete file="${cewolfJar}" />
+  </target>
+
+
+  <!-- =================================================================== -->
+  <!-- Convert carriage-returns/line-feeds for current OS type             -->
+  <!-- =================================================================== -->
+  <target name="fixcrlf" description="fix carriage returns for OS type">
+    <fixcrlf srcdir="${srcDirMain}" includes="**/*.java" />
+  </target>
+
+
+  <!-- =================================================================== -->
+  <!-- Compile the framework, extras, examples, and tests                  -->
+  <!-- =================================================================== -->
+  <target name="compile">
+    <mkdir dir="${classDir}" />
+
+    <javac srcdir="${srcDirMain}"
+			includes="**/*.java"
+			destdir="${classDir}"
+			source="11"
+			target="11"
+			includeantruntime="false"
+			debug="on">
+		<classpath refid="basic.class.path" />
+		<compilerarg value="-Xlint"/>
+    </javac>
+
+    <javac srcdir="${srcDirTest}"
+			includes="**/*.java"
+			destdir="${classDir}"
+			source="11"
+			target="11"
+			includeantruntime="false"
+			debug="on">
+      <classpath refid="test.class.path" />
+    </javac>
+  </target>
+
+
+  <!-- =================================================================== -->
+  <!-- Jar the framework                                                   -->
+  <!-- =================================================================== -->
+	<target name="jar" depends="compile" description="generate the basic jar file">
+		<jar jarfile="${cewolfJar}" basedir="${classDir}">
+			<metainf dir=".">
+				<filename name="cewolf.tld"/>
+			</metainf>
+		</jar>
+	</target>
+
+
+  <!-- =================================================================== -->
+  <!-- run the JUnit tests                                                 -->
+  <!-- =================================================================== -->
+	<target name="test" description="run the JUnit tests" depends="compile">
+		<mkdir dir="${qaDir}" />
+
+		<junit printsummary="on" fork="yes" haltonfailure="no">
+			<classpath refid="test.class.path" />
+			<formatter type="xml" usefile="true"/>
+            <test name="de.laures.cewolf.storage.TestSessionStorageGroup" todir="${qaDir}"/>
+		</junit>
+
+		<junitreport todir="${qaDir}">
+		  <fileset dir="${qaDir}">
+			<include name="TEST-*.xml"/>
+		  </fileset>
+		  <report format="frames" todir="${qaDir}"/>
+		</junitreport>
+	</target>
+
+
+  <!-- =================================================================== -->
+  <!-- run the FindBugs static code analyzer								-->
+  <!-- =================================================================== -->
+
+	<target name="runFindBugs" depends="compile">
+		<taskdef name="findbugs" classname="edu.umd.cs.findbugs.anttask.FindBugsTask"
+			classpath="${findbugsPath}/lib/findbugs.jar:${findbugsPath}/lib/findbugs-ant.jar"/>
+
+		<findbugs home="${findbugsPath}" output="html" outputFile="${qaDir}/findbugs.html"
+				reportLevel="low" effort="max" jvmargs="-mx256M">
+			<auxClasspath refid="basic.class.path"/>
+			<sourcePath path="${srcDirMain}/de" />
+			<class location="${classDir}"/>
+			<systemProperty name="findbugs.maskedfields.locals" value="true" />
+		</findbugs>
+	</target>
+
+  <!-- =================================================================== -->
+  <!-- Generate the framework API documentation                            -->
+  <!-- =================================================================== -->
+  <target name="javadoc">
+    <mkdir dir="${apiDir}" />
+    <javadoc
+			verbose="false"
+			packagenames="de.*"
+			sourcepath="${srcDirMain}/java"
+			destdir="${apiDir}"
+			bottom="&lt;i&gt;cewolf tag library - web charts with JFreeChart&lt;i&gt;"
+			windowTitle="${name} API ${cewolfVersion}"
+			linksource="no"
+			docTitle="${name} API ${cewolfVersion}" >
+		<classpath refid="basic.class.path" />
+	</javadoc>
+  </target>
+
+
+  <!-- =================================================================== -->
+  <!-- Generate the tag library API documentation                          -->
+  <!-- =================================================================== -->
+	<target name="tagdoc">
+		<mkdir dir="${tagApiDir}" />
+		<java fork="true" jar="${libDir}/${tldDocLib}">
+			<arg line="-d ${tagApiDir}"/>
+			<arg value="cewolf.tld"/>
+		</java>
+	</target>
+
+
+  <!-- =================================================================== -->
+  <!-- Zip up a distribution file                                          -->
+  <!-- =================================================================== -->
+  <target name="dist" depends="clean, jar, test, javadoc, tagdoc" description="Create a distribution zip file">
+    <mkdir dir="${distDir}" />
+
+    <copy todir="${distDir}" includeEmptyDirs="no">
+      <fileset dir="."
+	  	includes="${cewolfJar}, ${srcDir}/**, build.xml, ${libDir}/**, cewolf.tld, LICENSE.txt, RELEASE-NOTES.TXT, ${apiDir}/**, ${tagApiDir}/**" />
+    </copy>
+
+    <zip zipfile="${distZip}" basedir="." includes="${distDir}/**"/>
+
+    <delete dir="${distDir}" />
+  </target>
+
+</project>
+
